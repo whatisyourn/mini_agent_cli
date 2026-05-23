@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from mini_agent_cli.agent import build_agent
 from mini_agent_cli.skills import SkillLoader
 from mini_agent_cli.todo import TodoManager
 from mini_agent_cli.workspace import WorkspaceRuntime
@@ -50,6 +53,16 @@ class SmokeTests(unittest.TestCase):
             self.assertIn("demo", loader.list_text())
             skill_text = loader.load("demo")
             self.assertIn("请优先做最小改动。", skill_text)
+
+    def test_build_agent_initializes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(
+                os.environ,
+                {"ANTHROPIC_API_KEY": "dummy", "MODEL_ID": "dummy-model"},
+                clear=False,
+            ):
+                agent = build_agent(model="dummy-model", workdir=tmp)
+                self.assertEqual(agent.workspace.root, Path(tmp).resolve())
 
 
 if __name__ == "__main__":
