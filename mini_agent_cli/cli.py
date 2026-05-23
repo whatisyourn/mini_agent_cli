@@ -1,121 +1,61 @@
 from __future__ import annotations
 
 import argparse
-from typing import Any
+import builtins
+import os
+import runpy
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 
-HELP_TEXT = """可用命令：
-/help   显示帮助
-/todo   查看当前待办
-/skills 查看可用技能
-/reset  清空会话历史
-q / quit / exit 退出
-"""
+FULL_AGENT_PATH = Path(__file__).with_name("full_agent.py")
 
 
-def _banner() -> None:
-    """打印 CLI 的欢迎信息。"""
-    print("mini Agent CLI")
-    print("输入自然语言让模型工作。输入 /help 查看命令。\n")
-
-
-def _print_help() -> None:
-    """打印内置命令帮助。"""
-    print(HELP_TEXT)
-
-
-def _run_single_prompt(agent, prompt: str) -> str:
-    """单次运行模式。
+def _run_full_agent(prompt: str | None = None) -> None:
+    """运行全量版 agent 脚本。
 
     Args:
-        agent: 已构建好的 Agent 实例。
-        prompt: 这次要让模型处理的一次性任务描述。
-
-    Returns:
-        模型最后输出的文本结果。
+        prompt: 可选的一次性输入内容。传入后会模拟用户先输入 prompt，
+            再输入 q 退出，用于单次演示或快速验证。
     """
-    messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
-    return agent.run_conversation(messages)
+    if prompt is None:
+        runpy.run_path(str(FULL_AGENT_PATH), run_name="__main__")
+        return
 
+    inputs = iter([prompt, "q"])
+    original_input = builtins.input
 
-def _run_repl(agent) -> None:
-    """交互式 REPL。
-
-    Args:
-        agent: 已构建好的 Agent 实例。
-    """
-    _banner()
-    history: list[dict[str, Any]] = []
-
-    while True:
+    def fake_input(*args, **kwargs):  # noqa: ANN001, ANN003
         try:
-            query = input("mini-agent> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
+            return next(inputs)
+        except StopIteration:
+            raise EOFError from None
 
-        if not query:
-            continue
-
-        lowered = query.lower()
-        if lowered in {"q", "quit", "exit"}:
-            break
-        if query == "/help":
-            _print_help()
-            continue
-        if query == "/todo":
-            print(agent.workspace.todo.render())
-            continue
-        if query == "/skills":
-            print(agent.workspace.skills.list_text())
-            continue
-        if query == "/reset":
-            history.clear()
-            print("会话历史已清空。")
-            continue
-
-        history.append({"role": "user", "content": query})
-
-        try:
-            result = agent.run_conversation(history)
-        except Exception as exc:  # noqa: BLE001
-            print(f"Error: {exc}")
-            print()
-            continue
-
-        print(result)
-        print()
+    builtins.input = fake_input
+    try:
+        runpy.run_path(str(FULL_AGENT_PATH), run_name="__main__")
+    finally:
+        builtins.input = original_input
 
 
 def main(argv: list[str] | None = None) -> None:
     """CLI 入口。
 
     Args:
-        argv: 传给 `argparse` 的参数列表；传 None 时使用 `sys.argv`。
-
-    这个入口负责加载环境变量、解析命令行参数，然后启动一次性模式
-    或交互式模式。
+        argv: 传给 argparse 的参数列表；传 None 时使用 sys.argv。
     """
     load_dotenv(override=True)
 
-    parser = argparse.ArgumentParser(prog="mini-agent", description="一个最小可运行的个人 Agent CLI")
-    parser.add_argument("--model", help="覆盖 .env 中的模型名")
-    parser.add_argument("--prompt", help="一次性运行的任务提示词")
+    parser = argparse.ArgumentParser(
+        prog="mini-agent",
+        description="mini Agent CLI - full comprehensive harness",
+    )
+    parser.add_argument("--model", help="在启动全量引擎前覆盖 MODEL_ID")
+    parser.add_argument("--prompt", help="单次运行一个 prompt 后退出")
     args = parser.parse_args(argv)
 
-    # 这里做延迟导入，是为了让 `--help` 这种纯参数查询不需要提前初始化模型客户端。
-    from .agent import build_agent
+    if args.model:
+        os.environ["MODEL_ID"] = args.model
 
-    agent = build_agent(model=args.model)
-
-    if args.prompt:
-        try:
-            result = _run_single_prompt(agent, args.prompt)
-        except Exception as exc:  # noqa: BLE001
-            raise SystemExit(f"Error: {exc}") from exc
-        print(result)
-        return
-
-    _run_repl(agent)
+    _run_full_agent(prompt=args.prompt)

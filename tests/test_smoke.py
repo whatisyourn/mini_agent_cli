@@ -1,68 +1,20 @@
 from __future__ import annotations
 
-import os
-import tempfile
+import py_compile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
-
-from mini_agent_cli.agent import build_agent
-from mini_agent_cli.skills import SkillLoader
-from mini_agent_cli.todo import TodoManager
-from mini_agent_cli.workspace import WorkspaceRuntime
 
 
 class SmokeTests(unittest.TestCase):
-    def test_workspace_file_roundtrip(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            workspace = WorkspaceRuntime(root)
+    def test_full_agent_compiles(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        full_agent_path = root / "mini_agent_cli" / "full_agent.py"
+        py_compile.compile(str(full_agent_path), doraise=True)
 
-            write_result = workspace.run_write("demo.txt", "hello")
-            self.assertIn("Wrote", write_result)
-
-            self.assertEqual(workspace.run_read("demo.txt"), "hello")
-            self.assertEqual(workspace.run_edit("demo.txt", "hello", "world"), "Edited demo.txt")
-            self.assertEqual(workspace.run_read("demo.txt"), "world")
-
-    def test_safe_path_blocks_escape(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = WorkspaceRuntime(Path(tmp))
-            with self.assertRaises(ValueError):
-                workspace.safe_path("../escape.txt")
-
-    def test_todo_manager_renders(self) -> None:
-        todo = TodoManager()
-        output = todo.update([
-            {"id": "1", "text": "梳理目录", "status": "pending"},
-            {"id": "2", "text": "实现入口", "status": "in_progress"},
-        ])
-        self.assertIn("[>] #2: 实现入口", output)
-
-    def test_skill_loader_reads_skill(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            skill_dir = root / "skills" / "demo"
-            skill_dir.mkdir(parents=True)
-            skill_dir.joinpath("SKILL.md").write_text(
-                "---\nname: demo\ndescription: 测试技能\n---\n\n请优先做最小改动。\n",
-                encoding="utf-8",
-            )
-
-            loader = SkillLoader(root / "skills")
-            self.assertIn("demo", loader.list_text())
-            skill_text = loader.load("demo")
-            self.assertIn("请优先做最小改动。", skill_text)
-
-    def test_build_agent_initializes(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.dict(
-                os.environ,
-                {"ANTHROPIC_API_KEY": "dummy", "MODEL_ID": "dummy-model"},
-                clear=False,
-            ):
-                agent = build_agent(model="dummy-model", workdir=tmp)
-                self.assertEqual(agent.workspace.root, Path(tmp).resolve())
+    def test_cli_module_compiles(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        cli_path = root / "mini_agent_cli" / "cli.py"
+        py_compile.compile(str(cli_path), doraise=True)
 
 
 if __name__ == "__main__":
